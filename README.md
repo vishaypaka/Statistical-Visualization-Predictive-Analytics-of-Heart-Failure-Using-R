@@ -18,6 +18,7 @@
     <ul>
       <li>Summary statistics for predictors and target variable.</li>
       <li>Heatmaps and correlation matrices for understanding relationships between variables.</li>
+      <li>Chi-square test and Simulation of the data</li>
     </ul>
   </li>
   <li><strong>Machine Learning Models:</strong> 
