@@ -1,0 +1,1293 @@
+---
+title: "FINAL-PROJECT"
+author: GROUP - 9
+date: "2023-05-02"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+### Importing of recquired libraries for the visualization and interpretation.
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(leaps)
+library(knitr)
+library(ggplot2)
+library("reshape2")
+library(caret)
+library(psych)
+library(tree)
+library(rpart)
+library(rattle)
+library(randomForest)
+library(lattice)
+library(plotly)
+library(corrplot)  
+library(car)
+library(skimr) 
+library(ggsci)
+library(moments)
+library(randomForestSRC)
+library(gridExtra)
+library(class)
+library(car)
+```
+
+### Importing the dataset from the current directory.
+```{r message=FALSE, warning=FALSE}
+Heart_disease = read.csv("/Users/vishaypaka/Documents/STAT-515/Datasets/heart_failure_clinical_records_dataset.csv")
+
+```
+
+### PREPROCESSING OF THE DATASET
+
+```{r message=FALSE, warning=FALSE}
+table(is.na(Heart_disease)) # no null values
+```
+
+We can see that our dataset doesn't contain any null values. Now let's observe what datatype are our predictor variables and if there are any categorical or binary variables, let's factor them.
+
+### Structure of the dataset
+
+```{r message=FALSE, warning=FALSE}
+#Exploring the dataset
+
+ #checking the datatypes of variables present
+```
+### Data pre-processing
+
+```{r}
+table(Heart_disease$platelets)
+Heart_disease$platelets <- round(Heart_disease$platelets)
+
+#Formatting the scientific notations for the platelets variable.
+Heart_disease$platelets <- format(Heart_disease$platelets, scientific = FALSE)
+
+table(Heart_disease$platelets)
+
+#rounding off the value of an age variable.
+table(Heart_disease$age)
+Heart_disease$age <- round(Heart_disease$age)
+
+table(Heart_disease$age)
+```
+Here when we observe the column of age one observation as age 66.67, which stands out of the rest, so rounding off as we
+have less observations for prediction. Also platelets column has scientific notation for two records. So, formatting it 
+into numeric as an pre-processing step.
+
+Let's factorize the binary variables and convert continuous to numeric.
+
+```{r}
+Heart_disease$anaemia = as.factor(Heart_disease$anaemia)
+Heart_disease$diabetes = as.factor(Heart_disease$diabetes)
+Heart_disease$high_blood_pressure = as.factor(Heart_disease$high_blood_pressure)
+Heart_disease$sex = as.factor(Heart_disease$sex)
+Heart_disease$smoking = as.factor(Heart_disease$smoking)
+Heart_disease$DEATH_EVENT = as.factor(Heart_disease$DEATH_EVENT)
+Heart_disease$creatinine_phosphokinase = as.numeric(Heart_disease$creatinine_phosphokinase)
+Heart_disease$ejection_fraction = as.numeric(Heart_disease$ejection_fraction)
+Heart_disease$serum_sodium = as.numeric(Heart_disease$serum_sodium)
+Heart_disease$platelets = as.numeric(Heart_disease$platelets)
+str(Heart_disease)
+```
+## Producing some numerical and graphical summaries of the data set.
+
+### Statistical Analysis
+```{r}
+summary(Heart_disease) #summary of the dataset
+```
+
+By summary of the datset,we can observe all the variable's mean, median, min and max. We can see there are patients
+having anaemia are 129 and does not have anaemia are 170. 125 patients have diabetes and 174 doesn't have diabetes
+194 patients dose not have high bp and 105 patients have high bp. out of all patients 203 dose not smoke and the
+rest of them i.e; 96 people will smoke.In our dataset we have 105 patients recorded as female and 194 as of
+male.The total death events taken place during the follow up period are 96 and the patients who survived are 203.
+
+By observing all these statistical summaries of the predictors and response variables. We can conclude that the
+data set is slightly imbalanced as there are more observation of the patients who survived compare to the people
+who died because of the heart failure but have less difference of records with patients having anaemia or not,
+diabetes or not, high blood pressure or not, smoking or not. In general out of 7.2 billion population only less
+proportionate of people will die with heart failure condition.
+
+### Correlation analysis
+
+```{r message=FALSE, warning=FALSE}
+numeric_cols <- Heart_disease %>% select_if(is.numeric)
+cor_mat <- cor(numeric_cols)
+corrplot(cor_mat, method = "color", type = "upper", tl.col = "black", tl.srt = 45)
+```
+
+```{r message=FALSE, warning=FALSE}
+Heart_disease1 = subset(Heart_disease, select = -c(anaemia,high_blood_pressure,sex,smoking,DEATH_EVENT,diabetes))
+pairs.panels(Heart_disease1)
+```
+The correlation between serum sodium and ejection fraction is 1.0, which indicates that they are perfectly linearly related
+and increase or decrease together. Having correlation 1 means they are perfect positive and from the chart above we can see
+a linear line between serum sodium and ejection fraction. Let's see how it affects our models when fitted later.
+
+
+### Distribution analysis
+
+### RELATIONSHIP OF PREDICTOR VARIABLES WITH DEATH EVENT COLUMN
+
+```{r message=FALSE, warning=FALSE}
+# Box plot of age, creatinine phosphokinase, ejection fraction, platelets and death event
+palette_ro <- c("yellow", "#FC4E07")
+df1 <- melt(Heart_disease[,c(1,3,5,7,13)], id.var = "DEATH_EVENT")
+ggplot(data = df1, aes(x=DEATH_EVENT, y=value)) + 
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_boxplot(aes(fill=DEATH_EVENT)) + facet_wrap(~variable, scales="free")
+
+# Box plot of serum creatinine, serum sodium, time and death event
+df2 <- melt(Heart_disease[,c(8,9,12,13)], id.var = "DEATH_EVENT")
+ggplot(data = df2, aes(x=DEATH_EVENT, y=value)) + 
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_boxplot(aes(fill=DEATH_EVENT)) + facet_wrap(~variable, scales="free")
+
+p11 = ggplot(data = Heart_disease, aes(x=anaemia)) + 
+  geom_bar(position = 'dodge', aes(fill=DEATH_EVENT), color = 'black') +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  labs(
+    title = 'RELATIONSHIP OF ANAEMIA WITH DEATH EVENT'
+  ) + 
+  scale_x_discrete(labels = c("No anaemia", "Anaemia"))
+
+p22 = ggplot(data = Heart_disease, aes(x=diabetes)) + 
+  geom_bar(position = 'dodge', aes(fill=DEATH_EVENT), color = 'black') +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  labs(
+    title = 'RELATIONSHIP OF DIABETES WITH DEATH EVENT'
+  ) + 
+  scale_x_discrete(labels = c("No diabetes", "Diabetes"))
+
+p33 = ggplot(data = Heart_disease, aes(x=high_blood_pressure)) + 
+  geom_bar(position = 'dodge', aes(fill=DEATH_EVENT), color = 'black') +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  labs(
+    title = 'RELATIONSHIP OF DIABETES WITH DEATH EVENT'
+  ) + 
+  scale_x_discrete(labels = c("No high BP", "High BP"))
+
+p44 = ggplot(data = Heart_disease, aes(x=sex)) + 
+  geom_bar(position = 'dodge', aes(fill=DEATH_EVENT), color = 'black') +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  labs(
+    title = 'RELATIONSHIP OF GENDER WITH DEATH EVENT'
+  ) + 
+  scale_x_discrete(labels = c("female", "male"))
+
+p55 = ggplot(data = Heart_disease, aes(x=smoking)) + 
+  geom_bar(position = 'dodge', aes(fill=DEATH_EVENT), color = 'black') +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  labs(
+    title = 'RELATIONSHIP OF SMOKING WITH DEATH EVENT'
+  ) + 
+  scale_x_discrete(labels = c("Not smoke", "smoke"))
+grid.arrange(p11, p22, p33, p44, p55, nrow = 3, ncol = 2)
+```
+
+We can observe many  As we see in the boxplots creatinine phosphokinase and serum creatinine has high variance and
+positively skewed. So we should carefully observe them in the histogram and density plots and also calculate the skewness
+and if necessary scale them.
+
+
+### Age distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - age
+palette_ro <- c("yellow", "#FC4E07")
+p1 = ggplot(Heart_disease,aes(x=age)) + 
+  geom_histogram(aes(y = ..density..), binwidth = 5, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.25) + 
+  scale_x_continuous(breaks = seq(40, 100, 10)) +
+  geom_vline(xintercept = median(Heart_disease$age), linetype="longdash", colour = "blue") +
+  labs(x="Age of patient",
+       y="Density",
+       title="age distribution")
+
+p2 = ggplot(Heart_disease, aes(x = age, fill = DEATH_EVENT)) +
+  geom_density(aes(age,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  scale_x_continuous(breaks = seq(40, 100, 10)) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$age),
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$age), 
+             linetype="longdash", colour = "orange") +
+  labs(x="Age of patient",
+       y="Density",
+       title="Relationship between age and DEATH EVENT")
+
+grid.arrange(p1, p2, nrow=2)
+```
+
+The insights we get from above histogram and density for age distribution are:
+* The age of the patients was highest around 60 years and you can observe that, younger the age, the density plot
+of survival is high and as the age increases density plot of death is more. After the age 70 the density plot
+is reversed.
+
+### creatinine phosphokinase distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - creatinine phosphokinase
+palette_ro <- c("yellow", "#FC4E07")
+p3 = ggplot(Heart_disease,aes(x=creatinine_phosphokinase)) +
+  geom_histogram(aes(y = ..density..), binwidth = 100, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  geom_vline(xintercept = median(Heart_disease$creatinine_phosphokinase), 
+             linetype="longdash", colour = "blue") +
+  labs(x="Level of the CPK enzyme in the blood (mcg/L)",
+       y="Density",
+       title="creatinine phosphokinase distribution")
+
+p4 = ggplot(Heart_disease, aes(x = creatinine_phosphokinase, fill = DEATH_EVENT)) +
+  geom_density(aes(creatinine_phosphokinase,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$creatinine_phosphokinase),
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$creatinine_phosphokinase),
+             linetype="longdash", colour = "orange") +
+  labs(x="Level of the CPK enzyme in the blood (mcg/L)",
+       y="Density",
+       title="Relationship between creatinine phosphokinase and DEATH EVENT")
+
+grid.arrange(p3, p4, nrow=2)
+```
+
+The insights we get from above histogram and density for creatinine phosphokinase distribution are:
+* The distribution is heavily skewed to one side and we need to calculate the skewness and scale it accordingly.
+
+### ejection fraction distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - ejection fraction
+palette_ro <- c("yellow", "#FC4E07")
+p5 = ggplot(Heart_disease,aes(x = ejection_fraction)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  geom_vline(xintercept = median(Heart_disease$ejection_fraction), linetype="longdash", 
+             colour = "blue") +
+  scale_x_continuous(breaks = seq(10, 80, 10)) +
+  labs(x="Percentage of blood leaving the heart at each contraction",
+       y="Density",
+       title="ejection fraction distribution")
+
+p6 = ggplot(Heart_disease, aes(x = ejection_fraction, fill = DEATH_EVENT)) +
+  geom_density(aes(ejection_fraction,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$ejection_fraction), 
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$ejection_fraction), 
+             linetype="longdash", colour = "orange") +
+  scale_x_continuous(breaks = seq(10, 80, 10)) +
+  labs(x="Percentage of blood leaving the heart at each contraction",
+       y="Density",
+       title="Relationship between ejection fraction and DEATH EVENT")
+
+grid.arrange(p5, p6, nrow=2)
+```
+
+The insights we get from above histogram and density for creatinine phosphokinase distribution are:
+* The distribution is discrete. The ejection fraction for an normal person will be around 50-60 and if it is
+higher also, there will be no problem.But, if the ejection fraction falls to 40 and below there is a higher
+chances of heart failure. The same trend we can observe from the graph.
+
+### platelets distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - platelets
+palette_ro <- c("yellow", "#FC4E07")
+p7 = ggplot(Heart_disease,aes(x = platelets)) +
+  geom_histogram(aes(y = ..density..), binwidth = 20000, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  geom_vline(xintercept = median(Heart_disease$platelets), linetype="longdash", colour = "blue") +
+  labs(x="Platelets in the blood (kiloplatelets/mL)",
+       y="Density",
+       title="platelets distribution")
+
+p8 = ggplot(Heart_disease, aes(x = platelets, fill = DEATH_EVENT)) +
+  geom_density(aes(platelets,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$platelets),
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$platelets),
+             linetype="longdash", colour = "orange") +
+  labs(x="Platelets in the blood (kiloplatelets/mL)",
+       y="Density",
+       title="Relationship between platelets and DEATH EVENT")
+
+grid.arrange(p7, p8, nrow=2)
+```
+The insights we get from above histogram and density for platelets distribution are:
+* The distribution is symmetric , survivals have the highest platelets.
+
+### serum creatinine distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - serum creatinine
+palette_ro <- c("yellow", "#FC4E07")
+p9 = ggplot(Heart_disease,aes(x = serum_creatinine )) +
+  geom_histogram(aes(y = ..density..), binwidth = 0.2, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  geom_vline(xintercept = median(Heart_disease$serum_creatinine), linetype="longdash",
+             colour = "blue") +
+  labs(x="Level of serum creatinine in the blood (mg/dL)",
+       y="Density",
+       title="serum creatinine distribution")
+
+p10 = ggplot(Heart_disease, aes(x = serum_creatinine, fill = DEATH_EVENT)) +
+  geom_density(aes(serum_creatinine,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$serum_creatinine),
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$serum_creatinine),
+             linetype="longdash", colour = "orange") +
+  labs(x="Level of serum creatinine in the blood (mg/dL)",
+       y="Density",
+       title="Relationship between serum creatinine and DEATH EVENT")
+
+grid.arrange(p9, p10, nrow=2)
+```
+
+The insights we get from above histogram and density for serum creatinine distribution are:
+* The distribution is highly skewed and will be scaled later in this research, for survivals the value is around
+the median and the patients who have 1.5mg/dL have high risk of heart failure.
+
+### serum sodium distribution
+
+```{r message=FALSE, warning=FALSE}
+#Histogram - serum sodium
+palette_ro <- c("yellow", "#FC4E07")
+p11 = ggplot(Heart_disease,aes(x = serum_sodium)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  scale_x_continuous(breaks = seq(100, 150, 10)) +
+  geom_vline(xintercept = median(Heart_disease$serum_sodium), linetype="longdash", 
+             colour = "blue") +
+  labs(x="Level of serum sodium in the blood (mEq/L)",
+       y="Density",
+       title="serum sodium distribution")
+
+p12 = ggplot(Heart_disease, aes(x = serum_sodium, fill = DEATH_EVENT)) +
+  geom_density(aes(serum_sodium,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  scale_x_continuous(breaks = seq(100, 150, 10)) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$serum_sodium),
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$serum_sodium), 
+             linetype="longdash", colour = "orange") +
+  labs(x="Level of serum sodium in the blood (mEq/L)",
+       y="Density",
+       title="Relationship between serum sodium and DEATH EVENT")
+
+grid.arrange(p11, p12, nrow=2)
+```
+
+The insights we get from above histogram and density for serum sodium distribution are:
+* The survival of patients is more around the median and the value of deaths get's lower when the level of
+serum sodium increases.
+
+### Time distribution
+
+```{r}
+#Histogram - Time
+palette_ro <- c("yellow", "#FC4E07")
+p13 = ggplot(Heart_disease,aes(x = time)) +
+  geom_histogram(aes(y = ..density..), binwidth = 10, fill = palette_ro[1],color="black") +
+    geom_density(adjust=.8, fill="cyan",color="black", alpha=0.5) + 
+  scale_x_continuous(breaks = seq(0, 300, 50)) +
+  geom_vline(xintercept = median(Heart_disease$time), linetype="longdash", 
+             colour = "blue") +
+  labs(x="Follow-up period (days)",
+       y="Density",
+       title="Time distribution")
+
+p14 = ggplot(Heart_disease, aes(x = time, fill = DEATH_EVENT)) +
+  geom_density(aes(time,fill=DEATH_EVENT),alpha=0.64) +
+  scale_fill_manual(values = c(palette_ro[2], palette_ro[7]),
+                    name = "DEATH EVENT",
+                    labels = c("0 (Alive)", "1 (Died)")) +
+  scale_x_continuous(breaks = seq(0, 300, 50)) +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 0)$time), 
+             linetype="longdash", colour = "red") +
+  geom_vline(xintercept = median(filter(Heart_disease, DEATH_EVENT == 1)$time), 
+             linetype="longdash", colour = "orange") +
+  labs(x="Follow-up period (days)",
+       y="Density",
+       title="Relationship between Time and DEATH EVENT")
+
+grid.arrange(p13, p14, nrow=2)
+```
+
+The insights we get from above histogram and density for time distribution are:
+* The patients who have more follow-up days are likely to have higher chances of survival and the patients who
+have less than 60 follow-up days have higher chances of death. So, the more you follow-up on you regular health check-up's
+the more you have probability to survive.
+
+From the above density and histogram plots, we can observe the data is moderately skewed, it may violate the 
+assumptions of the model, leading to biased results or inaccurate predictions.Now let's calculate the skewness of 
+the dataset and observe which has zero, negative and positive skewness and transform them.
+
+### skewness of dataset (All numeric variables)
+```{r}
+#using sapply function to find skewness of all numeric variables
+numeric_cols <- Heart_disease %>% select_if(is.numeric)
+skewness_values <- sapply(numeric_cols, skewness)
+skewness_df <- data.frame(variable = names(skewness_values), skewness = skewness_values)
+skewness_df$index <- row.names(skewness_df)
+rownames(skewness_df) <- NULL  # Remove row names
+skewness_df <- skewness_df[, c( "variable", "skewness")]  # Rearrange columns
+skewness_df
+
+```
+
+From the above dataframe we can observe that the variables creatinine_phosphokinase, serum_creatinine and possibly 
+platelets have a high degree of skewness, which could potentially affect the performance of some statistical models. The 
+results might improve if the values are scaled. Let's compare both scaled and un-scaled data below by fitting into 
+different models.
+
+### Scaling the data (Data Normalization)
+
+```{r message=FALSE, warning=FALSE}
+scaled_heart_disease <- Heart_disease 
+scaled_heart_disease[, c("age", "creatinine_phosphokinase", "ejection_fraction",
+                         "platelets", "serum_creatinine",   
+                         "serum_sodium","time")] <- 
+  scale(scaled_heart_disease[, c("age", "creatinine_phosphokinase", "ejection_fraction",
+                                 "platelets", "serum_creatinine",   
+                                 "serum_sodium","time")])
+
+summary(scaled_heart_disease)
+
+Heart_disease1 = subset(Heart_disease, select = -c(serum_sodium))
+
+scaled_heart_disease11 <- Heart_disease1 
+scaled_heart_disease11[, c("age", "creatinine_phosphokinase", "ejection_fraction",
+                           "platelets", "serum_creatinine",   
+                     "time")] <- 
+  scale(scaled_heart_disease11[, c("age", "creatinine_phosphokinase", "ejection_fraction",
+                                   "platelets", "serum_creatinine",   
+                     "time")])
+```
+Now you can observe that the scaled data has a mean of zero and a standard deviation of one.
+
+### Splitting the dataset into training and testing into 70% and 30%
+
+```{r message=FALSE, warning=FALSE}
+set.seed(1)
+train <- sample(nrow(Heart_disease), 0.7 * nrow(Heart_disease))
+training_set_unscaled <- Heart_disease[train, ]
+testing_set_unscaled <- Heart_disease[-train, ]
+
+train_2 <- sample(nrow(scaled_heart_disease), 0.7 * nrow(scaled_heart_disease))
+training_set_scaled <- scaled_heart_disease[train_2, ]
+testing_set_scaled <- scaled_heart_disease[-train_2, ]
+
+Heart_disease1 = subset(Heart_disease, select = -c(serum_sodium))
+
+set.seed(1)
+train11 <- sample(nrow(Heart_disease1), 0.7 * nrow(Heart_disease1))
+training_set_unscaled11 <- Heart_disease1[train11, ]
+testing_set_unscaled11 <- Heart_disease1[-train11, ]
+
+train_22 <- sample(nrow(scaled_heart_disease11), 0.7 * nrow(scaled_heart_disease11))
+training_set_scaled11 <- scaled_heart_disease11[train_22, ]
+testing_set_scaled11 <- scaled_heart_disease11[-train_22, ]
+```
+
+Now let's fit the dataset to different classification models with scaled and unscaled data and compare the results of each.
+
+## MODEL 1 - LOGISTIC REGRESSION
+
+### MODEL 1.a -> LOGISTIC REGRESSION - ALL VARIABLES - UNSCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the un-scaled data on logistic regression model
+glm.all_unscaled = glm(DEATH_EVENT~.,data=training_set_unscaled,family="binomial")
+
+#predicting on the testing un-scaled data
+predict_test_all_unscaled <- factor(ifelse(predict(glm.all_unscaled, testing_set_unscaled ,
+                                                   type ="response") > 0.5, "1", "0"))
+summary(glm.all_unscaled)
+```
+
+The logistic regression has fitted to whole dataset with death event as a response variable. We got an accuracy of 88.9%
+when logistic regression is done on the un-scaled data and a true positive rate (recall) of 93.44%. From Fig. 15 it can be
+noted the coefficients (age, ejection fraction, serum creatinine, time) have asterisks next to their p-values, indicating
+that they are statistically significant at certain significance levels (p < 0.05), while others are not. The coefficients
+with the variables which are insignificant have the p value greater than 0.05 meaning they have weak evidence against the
+null hypothesis, and we do not reject null hypothesis. The lower p-values are considered more statistically significant and
+are typically interpreted as having a stronger association with the response variable (Death Event). The others with no
+asterisk are insignificant variables and we can remove them for further models.
+
+We can also see serum sodium has NA values in the estimate column, standard error column, and p-value column. Which means
+the variable is not included in the model and the variable was likely dropped during the selection process. We observed
+that it is perfect positive with ejection fraction predictor. The main reason for the model to not select serum sodium is,
+this variable is highly correlated with the other predictor which is already included in the model.
+
+### Confusion matrix for full unscaled model
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_all_unscaled,testing_set_unscaled$DEATH_EVENT)
+```
+
+We got an accuracy of 88.9% when logistic regression is done on the un-scaled data. 
+
+The confusion matrix obtained for un-scaled data is as follows:
+True Positives : 57
+False Positives: 6
+True Negatives : 23
+False Negatives: 4
+
+The balanced accuracy got by the logistic regression on the given dataset is 86.38%. It is the mean of sensitivity and Specificity.
+
+Balanced Accuracy = Sensitivity + Specificity / 2 => 0.9344 + 0.7931 / 2 => 0.8638 
+
+Specificity value is 79.31% (True Negative Rate)
+Sensitivity value is 93.44% (True Positive Rate)
+
+### MODEL 1.b -> LOGISTIC REGRESSION - ALL VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the scaled data on logistic regression model
+glm.all_scaled = glm(DEATH_EVENT~.,data=training_set_scaled,family="binomial")
+
+#predicting on the testing scaled data
+predict_test_all_scaled <- factor(ifelse(predict(glm.all_scaled, testing_set_scaled , type =
+                                          "response") > 0.5, "1", "0"))
+summary(glm.all_scaled)
+```
+
+### Confusion matrix for full scaled model
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_all_scaled,testing_set_scaled$DEATH_EVENT)
+```
+
+We got an accuracy of 83.3% when logistic regression is done on the scaled data. 
+
+The confusion matrix obtained for scaled data is as follows:
+True Positives : 56
+False Positives: 10
+True Negatives : 19
+False Negatives: 5
+
+The balanced accuracy got by the logistic regression on the given dataset is 78.66%. It is the mean of sensitivity and Specificity.
+
+Balanced Accuracy = Sensitivity + Specificity / 2 =>0.9180  + 0.6552 / 2 => 0.7866 
+
+Specificity value is 65.52% (True Negative Rate)
+Sensitivity value is 91.80% (True Positive Rate)
+
+
+As we can see that the un-scaled data when fitted for the logistic model we got an accuracy of 88.9% and when fitted with 
+the scaled data we got an accuracy of 83.3%. It is possible that scaling the data may have reduced the accuracy of the 
+logistic regression model compared to the un-scaled data. This could be due to a few reasons:
+
+* Outliers: Scaling the data can sometimes amplify the effect of outliers, which can negatively impact the accuracy of the
+  model.
+  
+* Non-linear relationships: If there are non-linear relationships between the predictors and the response, scaling the data 
+  may reduce the ability of the model to capture these relationships.
+  
+  In general, It is good to experiment both scaled and un-scaled data and choose the method that has good accuracy. Here in
+  our case we choose un-scaled data fitted for logistic model.
+  
+Since, We had perfect positive correlation between serum sodium, ejection fraction. Lets try removing one variable and 
+check the accuracy.Now let's remove the serum sodium and observe whether it effects the model in any way for both scaled 
+and unscaled data.
+
+### MODEL 1.c -> LOGISTIC REGRESSION - REMOVING SERUM SODIUM VARIABLE - UN-SCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the un-scaled data on logistic regression model (removing serum sodium)
+glm.removing_serum_sodium_unscaled = glm(DEATH_EVENT~.-serum_sodium,data=training_set_unscaled,
+                                         family="binomial")
+
+#predicting on the testing un-scaled data (removing serum sodium)
+predict_test_unscaled <- factor(ifelse(predict(glm.removing_serum_sodium_unscaled, testing_set_unscaled, 
+                                                type ="response") > 0.5, "1", "0"))
+summary(glm.removing_serum_sodium_unscaled)
+```
+
+### Confusion matrix for removing serum sodium predictor - un-scaled
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_unscaled,testing_set_unscaled$DEATH_EVENT)
+```
+
+### MODEL 1.d -> LOGISTIC REGRESSION - REMOVING SERUM SODIUM VARIABLE - SCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the scaled data on logistic regression model (removing serum sodium)
+glm.removing_serum_sodium_scaled = glm(DEATH_EVENT~.-serum_sodium,data=training_set_scaled,
+                                       family="binomial")
+
+#predicting on the testing scaled data (removing serum sodium)
+predict_test_scaled <- factor(ifelse(predict(glm.removing_serum_sodium_scaled, testing_set_scaled ,
+                                             type ="response") > 0.5, "1", "0"))
+summary(glm.removing_serum_sodium_scaled)
+```
+
+### Confusion matrix for removing serum sodium predictor - scaled
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_scaled,testing_set_scaled$DEATH_EVENT)
+```
+
+We got the same confusion matrix for the full model and when serum sodium is removed from both scaled and un-scaled data.We
+observe no difference when the predictor serum sodium is removed from both scaled and un-scaled data. The accuraccies
+remains the same i.e; 83.3% and 88.89% respectively.
+
+Now let's find the significant predictors and fit the model and compare the accuracies for both scaled and unscaled data 
+and also compare the model with the above models.
+
+### FORWARD STEPWISE SELECTION
+
+```{r}
+Heart_disease2 = subset(Heart_disease, select = -c(serum_sodium))
+regfit.bwd=regsubsets(DEATH_EVENT~.,data=Heart_disease2,nvmax=12, method ="forward")
+summary(regfit.bwd)
+```
+
+### BACKWARD STEPWISE SELECTION
+
+```{r}
+Heart_disease2 = subset(Heart_disease, select = -c(serum_sodium))
+regfit.bwd=regsubsets(DEATH_EVENT~.,data=Heart_disease2,nvmax=12, method ="backward")
+summary(regfit.bwd)
+```
+
+We see that using backward stepwise selection, the best one-variable model contains only time, and the best two-variable 
+model additionally includes ejection_fraction. After observing the summary of the full model with the p-values of the 
+predictors and the variable selection technique (backward), we can conclude that time,ejection_fraction,serum_creatinine 
+and age are taken has the significant variables.
+
+### MODEL 1.e -> LOGISTIC REGRESSION - SIGNIFICANT VARIABLES - UN-SCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the un-scaled data on logistic regression model (only significant variables)
+glm.significant_unscaled =   
+      glm(DEATH_EVENT~time+ejection_fraction+serum_creatinine+age,data=training_set_unscaled,
+          family="binomial")
+
+#predicting on the testing un-scaled data
+predict_test_unscaled1 <- factor(ifelse(predict(glm.significant_unscaled, testing_set_unscaled, 
+                                                 type ="response") > 0.5, "1", "0"))
+summary(glm.significant_unscaled)
+```
+
+### Confusion matrix for significant predictors - un-scaled 
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_unscaled1,testing_set_unscaled$DEATH_EVENT)
+```
+
+### MODEL 1.f -> LOGISTIC REGRESSION - SIGNIFICANT VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+#fitting the scaled data on logistic regression model (only significant variables)
+glm.significant_scaled =   
+      glm(DEATH_EVENT~age+ejection_fraction+serum_creatinine+time,data=training_set_scaled,
+          family="binomial")
+
+#predicting on the testing scaled data
+predict_test_scaled1 <- factor(ifelse(predict(glm.significant_scaled, testing_set_scaled ,
+                                              type ="response") > 0.5, "1", "0"))
+summary(glm.significant_scaled)
+```
+
+### Confusion matrix for significant predictors -scaled 
+
+```{r message=FALSE, warning=FALSE}
+confusionMatrix(predict_test_scaled1,testing_set_scaled$DEATH_EVENT)
+```
+
+We got the same confusion matrix and the calculations of the model's performance. So,the model with 4 significant variables
+(age, ejection_fraction, serum_creatinine and time) is selected as the best model with an accuracy of 88.89% and recall/
+true positive rate/ sensitivity of 93.44%.
+
+## MODEL 2 - K-NEAREST NEIGHBORS
+### MODEL 2.a - K-NEAREST NEIGHBORS - ALL VARIABLES - UNSCALED
+
+
+```{r message=FALSE, warning=FALSE}
+error<-rep(NA,6) # Placeholder
+training_set_unscaled_knn = subset(training_set_unscaled, select = 
+                                     c(age,creatinine_phosphokinase,ejection_fraction,
+                                       platelets,serum_creatinine,time))
+testing_set_unscaled_knn = subset(testing_set_unscaled, select = 
+                                    c(age,creatinine_phosphokinase,ejection_fraction,platelets,
+                                       serum_creatinine,time))
+
+for(i in 1:6)
+{
+  knn.pred = knn(training_set_unscaled_knn,testing_set_unscaled_knn,
+                 training_set_unscaled$DEATH_EVENT,k=i)
+  error[i]=mean(knn.pred!=testing_set_unscaled$DEATH_EVENT)
+}
+plot(error,type="b",xlab="K",ylab="Test Error")
+```
+
+### Finding best k-value
+```{r message=FALSE, warning=FALSE}
+k = (loc=which.min(error))
+k
+```
+
+### Confusion matrix for KNN - un-scaled (All variables)
+
+```{r message=FALSE, warning=FALSE}
+knn.pred_unscaled=knn(train = training_set_unscaled_knn,test = testing_set_unscaled_knn,cl = 
+                        training_set_unscaled$DEATH_EVENT,k = k)
+confusionMatrix(testing_set_unscaled$DEATH_EVENT, knn.pred_unscaled)
+```
+
+From the un-scaled model fitted to KNN, the obtained accuracy is 65.56%for full variable (continuous) model.
+
+### MODEL 2.b - K-NEAREST NEIGHBORS - ALL VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+error<-rep(NA,6) # Placeholder
+training_set_scaled_knn = subset(training_set_unscaled, select = 
+                                     c(age,creatinine_phosphokinase,ejection_fraction,
+                                       platelets,serum_creatinine,time))
+testing_set_scaled_knn = subset(testing_set_unscaled, select = 
+                                    c(age,creatinine_phosphokinase,ejection_fraction,
+                                      platelets,serum_creatinine,time))
+for(i in 1:6)
+{
+  knn.pred=knn(training_set_scaled_knn,testing_set_scaled_knn,training_set_scaled$DEATH_EVENT,
+               k=i)
+  error[i]=mean(knn.pred!=testing_set_scaled$DEATH_EVENT)
+}
+plot(error,type="b",xlab="K",ylab="Test Error")
+```
+
+### Finding best k-value
+```{r message=FALSE, warning=FALSE}
+k = (loc=which.min(error))
+k
+```
+
+### Confusion matrix for KNN - scaled (All variables)
+```{r message=FALSE, warning=FALSE}
+knn.pred_scaled=knn(train = training_set_scaled_knn,test = testing_set_scaled_knn,
+                    cl = training_set_scaled$DEATH_EVENT,k = k)
+confusionMatrix(testing_set_scaled$DEATH_EVENT, knn.pred_scaled)
+```
+From the scaled model fitted to KNN, the obtained accuracy is 87.78% for full variable (continuous) model.
+
+### MODEL 2.c - K-NEAREST NEIGHBORS - SIGNIFICANT VARIABLES - UN-SCALED
+
+```{r message=FALSE, warning=FALSE}
+error<-rep(NA,4) # Placeholder
+training_set_unscaled_knn1 = subset(training_set_unscaled, select = 
+                                     c(age,ejection_fraction,
+                                       serum_creatinine,time))
+testing_set_unscaled_knn1 = subset(testing_set_unscaled, select = 
+                                    c(age,ejection_fraction,
+                                       serum_creatinine,time))
+
+for(i in 1:4)
+{
+  knn.pred = knn(training_set_unscaled_knn1,testing_set_unscaled_knn1,
+                 training_set_unscaled$DEATH_EVENT,k=i)
+  error[i]=mean(knn.pred!=testing_set_unscaled$DEATH_EVENT)
+}
+plot(error,type="b",xlab="K",ylab="Test Error")
+```
+
+### Finding best k-value
+```{r message=FALSE, warning=FALSE}
+k = (loc=which.min(error))
+k
+```
+
+
+### Confusion matrix for KNN - un-scaled (significant variables)
+
+```{r message=FALSE, warning=FALSE}
+knn.pred_unscaled1 = knn(train = training_set_unscaled_knn1,test = testing_set_unscaled_knn1,
+                         cl = training_set_unscaled$DEATH_EVENT,k = k)
+confusionMatrix(testing_set_unscaled$DEATH_EVENT, knn.pred_unscaled1)
+```
+From the un-scaled model fitted to KNN, the obtained accuracy is 85.56% for significant variables.
+
+### MODEL 2.d - K-NEAREST NEIGHBORS - SIGNIFICANT VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+error<-rep(NA,4) # Placeholder
+training_set_scaled_knn1 = subset(training_set_scaled, select = 
+                                     c(age,ejection_fraction,
+                                       serum_creatinine,time))
+testing_set_scaled_knn1 = subset(testing_set_scaled, select = 
+                                    c(age,ejection_fraction,
+                                       serum_creatinine,time))
+
+for(i in 1:4)
+{
+  knn.pred = knn(training_set_scaled_knn1,testing_set_scaled_knn1,training_set_scaled$DEATH_EVENT,
+               k=i)
+  error[i]=mean(knn.pred!=testing_set_scaled$DEATH_EVENT)
+}
+plot(error,type="b",xlab="K",ylab="Test Error")
+```
+
+### Finding best k-value
+```{r message=FALSE, warning=FALSE}
+k = (loc=which.min(error))
+k
+```
+
+### Confusion matrix for KNN - scaled (significant variables)
+
+```{r message=FALSE, warning=FALSE}
+knn.pred_scaled1 = knn(train = training_set_scaled_knn1,test = testing_set_scaled_knn1,cl = training_set_scaled$DEATH_EVENT,k = k)
+confusionMatrix(testing_set_scaled$DEATH_EVENT, knn.pred_scaled1)
+```
+From the scaled model fitted to KNN, the obtained accuracy is 81.11% for significant variables.
+
+We can observe the KNN algorithm performs well on un-scaled data compared to scaled data. So, the model with un-scaled data
+with significant variables is selected as best model in KNN with 85.56 accuracy and will compare it with other models later
+in this research.
+
+
+## MODEL 3 - DECISION TREES
+### MODEL 3.a - DECISION TREES - ALL VARIABLES - UN-SCALED
+
+```{r message=FALSE, warning=FALSE}
+tree.Heart_disease_unscaled = tree(DEATH_EVENT~.,training_set_unscaled)
+summary(tree.Heart_disease_unscaled)
+```
+The summary() indicates that 6 of the variables are used in constructing the tree.
+
+```{r message=FALSE, warning=FALSE}
+plot(tree.Heart_disease_unscaled)
+text(tree.Heart_disease_unscaled,pretty=0)
+```
+
+### Plotting the tree
+```{r message=FALSE, warning=FALSE}
+#Better tree visualization using rpart package
+tree.Heart_disease_unscaled = rpart(DEATH_EVENT~., training_set_unscaled)
+fancyRpartPlot(tree.Heart_disease_unscaled)
+```
+
+The type="class" argument specifies that the predicted values should be the class labels rather than probabilities.
+
+We can come up with research question based on the tree:
+If a patient of age 78 admitted in hospital and stayed more than 70 days and the level of serum creatinine in his blood is 
+1.5(mg/dL). The percentage of the blood leaving his heart at each contraction is 42. Will the patient be alive or dead?
+
+### Confusion matrix for Random forest - un-scaled 
+```{r message=FALSE, warning=FALSE}
+# Make predictions on the un-scaled test set
+predictions <- predict(tree.Heart_disease_unscaled, newdata=testing_set_unscaled,
+                       type="class")
+
+confusionMatrix(testing_set_unscaled$DEATH_EVENT, predictions)
+```
+
+When the un-scaled data is fitted to decision tree model, we obtained the accuracy of 75.5%
+
+## MODEL 3 - DECISION TREES
+### MODEL 3.b - DECISION TREES - ALL VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+tree.Heart_disease_scaled = tree(DEATH_EVENT~.,training_set_scaled)
+summary(tree.Heart_disease_scaled)
+```
+
+### Plotting the tree
+```{r message=FALSE, warning=FALSE}
+#Better tree visualization using rpart package
+tree.Heart_disease_scaled = rpart(DEATH_EVENT~., training_set_scaled)
+fancyRpartPlot(tree.Heart_disease_scaled)
+```
+### Confusion matrix for Decision tree - scaled 
+
+```{r message=FALSE, warning=FALSE}
+# Make predictions on the scaled test set
+predictions1 <- predict(tree.Heart_disease_scaled, newdata=testing_set_scaled,
+                        type="class")
+
+confusionMatrix(testing_set_scaled$DEATH_EVENT, predictions1)
+
+```
+
+When the scaled data is fitted to decision tree model, we obtained the accuracy of 81.1%
+We can observe the Decision tree algorithm performs well on un-scaled data compared to scaled data. So, the model with
+un-scaled data is selected as best model in Decision tree with 84.4 accuracy and will compare it with other models later in
+this research.
+
+## MODEL 4 - RANDOM FOREST ALGORITHM
+### MODEL 4.a -> RANDOM FOREST ALGORITHM - ALL VARIABLES - UNSCALED
+
+```{r}
+#tuning the mtry parameter using the tuneRF function from the randomForest package.
+set.seed(100)
+tune.rf <- tuneRF(training_set_unscaled[, -13], training_set_unscaled$DEATH_EVENT, 
+                  ntreeTry=100,stepFactor=1.5, plot=TRUE, dobest=TRUE)
+
+```
+The lower the out-of-bag error rate the best the model gives the accuracy.So, from above chart analysis we can set
+mtry = 4.
+
+```{r message=FALSE, warning=FALSE}
+set.seed(0)
+rf.Heart_disease_unscaled = randomForest(DEATH_EVENT~.,data=training_set_unscaled, mtry=4,
+                                         importance=TRUE)
+
+predicted_values_rf = predict(rf.Heart_disease_unscaled,newdata = testing_set_unscaled)
+
+```
+
+### Confusion matrix for Random forest - un-scaled 
+
+```{r message=FALSE, warning=FALSE}
+#Confusion Matrix - UNSCALED MODEL
+confusionMatrix(predicted_values_rf, testing_set_unscaled$DEATH_EVENT)
+```
+When the un-scaled data is fitted to random forest model, we obtained the accuracy of 88.89%
+
+```{r message=FALSE, warning=FALSE}
+# Plot variable importance to determine which variables are most important.
+varImpPlot(rf.Heart_disease_unscaled)
+```
+
+### MODEL 4.b -> RANDOM FOREST ALGORITHM - ALL VARIABLES - SCALED
+
+```{r message=FALSE, warning=FALSE}
+set.seed(100)
+rf.Heart_disease_scaled = randomForest(DEATH_EVENT~.,data=training_set_scaled, mtry=4,
+                                       importance=TRUE)
+
+predicted_values_rf1 = predict(rf.Heart_disease_scaled,newdata = testing_set_scaled)
+
+```
+
+
+### Confusion matrix for Random forest - scaled 
+
+```{r message=FALSE, warning=FALSE}
+#Confusion Matrix - SCALED MODEL
+confusionMatrix(predicted_values_rf1, testing_set_scaled$DEATH_EVENT)
+```
+
+When the scaled data is fitted to random forest model, we obtained the accuracy of 78.89%
+We can observe the random forest algorithm performs well on un-scaled data compared to scaled data. So, the model with
+un-scaled data is selected as best model in random forest with 88.89 accuracy and will compare it with other models below.
+
+```{r}
+# Plot variable importance to determine which variables are most important.
+varImpPlot(rf.Heart_disease_scaled)
+```
+
+By comparing both the plots of importance variables from scaled and un-scaled data, we can tell that the predictors : time,
+serum creatinine, serum sodium,ejection fraction and age are the most important features for the prediction and are most
+predictive.
+
+## COMPARING ALL THE MODELS.
+
+```{r message=FALSE, warning=FALSE}
+#Collecting all the best accuracy and sensitivity(recall) metrics from out all the models(scaled/unscaled).
+acc_lr = 88.89
+acc_knn = 85.56
+acc_dtree = 84.44
+acc_rf = 88.89
+tpr_lr = 93.44
+tpr_knn = 87.50
+tpr_dtree = 88.52
+tpr_rf = 93.44
+str(Heart_disease)
+```
+
+### PLOTTING THE METRICS OF ALL DIFFERENT CLASSIFICATION MODELS(BEST ONE)
+```{r message=FALSE, warning=FALSE}
+# create a data frame with algorithm names, accuracy, and recall
+df <- tibble(
+  Algorithm = c("logistic\nregression", "KNN", "decision\ntrees", "random\nforest"),
+  Accuracy = c(acc_lr, acc_knn, acc_dtree, acc_rf),
+  Recall = c(tpr_lr, tpr_knn, tpr_dtree, tpr_rf)
+)
+
+# reshape the data frame into a longer format
+df_long <- df %>%
+  pivot_longer(cols = -Algorithm, names_to = "Metrics", values_to = "Percent")
+
+# plot the data using ggplot2
+ ggplot(df_long,aes(x = reorder(Algorithm, X = Percent),
+             y = Percent,
+             fill = Metrics)) +
+    geom_bar(stat = "identity",
+             position = "dodge",
+             alpha=1.0) +
+    geom_text(aes(group = Metrics, label = str_c(sprintf("%2.2f", Percent), "%")), 
+              position = position_dodge(width = 0.9), vjust = -0.2) +
+    scale_fill_manual(values = c("yellow", "red")) +
+    labs(x = "Algorithms", title = "Metrics of different classification models performed") +
+    theme_minimal(base_size = 14)
+```
+
+We can observe the accuracy and recall(sensitivity) of all the models which are plotted above the bars.
+
+From the above plot we can say that logistic regression is the "best" model in terms of recall, while KNN is the "best" 
+model in terms of accuracy.
+
+Now let's try to do simulation and add some data.
+
+### SIMULATION OF THE DATA BASED ON EXISTING DATA
+
+Using random normal distributions with mean and standard deviation values taken from the original Heart_disease dataset.
+we will create a new dataset of 1000 observations with the same columns as the original, but with different values 
+generated by the random distributions. The new dataset can be used for testing or training machine learning models without 
+having to collect new data. We are creating 1000 observations becuase the simulated dataset should not impact more than the
+original dataset.
+
+```{r message=FALSE, warning=FALSE}
+set.seed(1400)
+
+N = 1400
+simulated_heart_disease = data.frame(
+  age = round(rnorm(N,mean(Heart_disease$age),sd(Heart_disease$age))),
+  anaemia = sample(c(0, 1), N, replace = TRUE),
+  creatinine_phosphokinase = round(rnorm(N,mean(Heart_disease$creatinine_phosphokinase),
+                                         sd(Heart_disease$creatinine_phosphokinase))),
+  diabetes = sample(c(0, 1), N, replace = TRUE),
+  ejection_fraction = round(rnorm(N,mean(Heart_disease$ejection_fraction),
+                                  sd(Heart_disease$ejection_fraction))),
+  high_blood_pressure = sample(c(0, 1), N, replace = TRUE),
+  platelets = round(rnorm(N,mean(Heart_disease$platelets),sd(Heart_disease$platelets))),
+  serum_creatinine = round(rnorm(N,mean(Heart_disease$serum_creatinine),
+                                 sd(Heart_disease$serum_creatinine))),
+  serum_sodium = round(rnorm(N,mean(Heart_disease$serum_sodium),
+                             sd(Heart_disease$serum_sodium))),
+  sex = sample(c(0, 1), N, replace = TRUE),
+  smoking = sample(c(0, 1), N, replace = TRUE),
+  time = round(rnorm(N,mean(Heart_disease$time),sd(Heart_disease$time)))
+)
+
+simulated_heart_disease$anaemia <- factor(simulated_heart_disease$anaemia, levels = c(0,1))
+simulated_heart_disease$diabetes <- factor(simulated_heart_disease$diabetes, levels = c(0,1))
+simulated_heart_disease$high_blood_pressure <- factor(simulated_heart_disease$high_blood_pressure,
+                                                      levels = c(0,1))
+simulated_heart_disease$sex <- factor(simulated_heart_disease$sex, levels = c(0,1))
+simulated_heart_disease$smoking <- factor(simulated_heart_disease$smoking, levels = c(0,1))
+
+
+#Fitting the LOGISTIC MODEL
+#predicting on the un-scaled testing data
+simulated_prediction <- predict(rf.Heart_disease_unscaled, newdata=simulated_heart_disease)
+simulated_data <- cbind(simulated_heart_disease, simulated_prediction)
+```
+
+### Combing heart disease dataset with the obtained simulation dataset
+```{r}
+colnames(simulated_data)[13] <- "DEATH_EVENT"
+heart_disease_simulated = rbind(training_set_unscaled, testing_set_unscaled, simulated_data)
+```
+
+### SPLITTING INTO TRAINING AND TESTING
+```{r}
+set.seed(1001)
+train_simulated <- sample(nrow(heart_disease_simulated), 0.8 * nrow(heart_disease_simulated))
+training_set_simulated <- heart_disease_simulated[train_simulated, ]
+testing_set_simulated <- heart_disease_simulated[-train_simulated, ]
+```
+
+### FITTING THE RANDOM FOREST MODEL AND PREDICTING RESULTS FOR SIMULATED DATA
+```{r}
+#fitting the un-scaled data on random forest model
+set.seed(100)
+rf.Heart_disease_simulated_unscaled = randomForest(DEATH_EVENT~.,data=training_set_simulated,
+                                                   mtry=6, importance=TRUE)
+
+predict_test_all_simulated = predict(rf.Heart_disease_simulated_unscaled,
+                                     newdata = testing_set_simulated)
+```
+
+### Confusion matrix for full simulated model on random forest.
+```{r}
+confusionMatrix(predict_test_all_simulated,testing_set_simulated$DEATH_EVENT)
+```
+
+From the added simulated data to our original dataset we got an accuracy of 93.82% and and an sensitivity (recall) of 
+96.95%. Which is very good than all the models we performed above.
+
+### FITTING THE LOGISTIC MODEL AND PREDICTING RESULTS
+```{r}
+#fitting the un-scaled data on logistic regression model
+glm.all_simulated = glm(DEATH_EVENT~.,data=training_set_simulated,family="binomial")
+
+#predicting on the testing un-scaled data
+predict_test_all_simulated1 <- factor(ifelse(predict(glm.all_simulated, 
+                                                     testing_set_simulated , 
+                                                     type ="response") > 0.5, "1", "0"))
+summary(glm.all_simulated)
+```
+
+For the added simulated data to original dataset, we can see there are added significant variables to our full model, which are age, sex, ejection fraction, serum creatinine, time and, creatinine phosphokinase.
+
+### Confusion matrix for full simulated model
+
+```{r}
+confusionMatrix(predict_test_all_simulated1,testing_set_simulated$DEATH_EVENT)
+```
+
+From the added simulated data to our original dataset we got an accuracy of 88.82% and and an sensitivity (recall) of 
+93.51% when fitted with logistic model.
+
+So, the Randome forest model fitted with simulated data is very good than logistic model we performed above with an accuracy of 93.82% when fitted with random forest algorithm.
+
+### Tabulating the results of all models.
+
+```{r message=FALSE, warning=FALSE}
+Classification_models = c('Logistic Model - All Variables(unscaled)',
+                          'Logistic Model - All Variables(scaled)',
+                          'Logistic Model - Removing serum_sodium Variable(unscaled)',
+                          'Logistic Model - Removing serum_sodium Variable(scaled)',
+                          'Logistic Model - Significant Variables(unscaled)',
+                          'Logistic Model - Significant Variables(scaled)',
+                          'KNN Model - All continuous variables', 
+                          'KNN Model - significant Continuous variables',
+                          'Decision tree Model (unscaled)','Decision tree Model (scaled)',
+                          'Random-forest Model (unscaled)','Random-forest Model (scaled)',
+                          'Random-forest Model - All Variables (After addidng simulated data)',
+                          'Logistic Model - All Variables (After addidng simulated data)')
+Accuracy_rates = c('88.89%','83.33%','88.89%','83.33%','88.89%', 
+                   '82.22%','61.11%','85.56%','84.44%','81.11%','88.89%%','78.89%','93.82%','88.82%')
+
+All_models_comparision = data.frame(Classification_models, Accuracy_rates)
+All_models_comparision
+```
+
+### Performing chi-square test.
+
+```{r message=FALSE, warning=FALSE}
+# Create a contingency table between smoking and death event
+smoking_death_table <- table(Heart_disease$smoking, Heart_disease$DEATH_EVENT)
+
+# Print the contingency table
+smoking_death_table
+
+# Perform the chi-square test
+chisq.test(smoking_death_table)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Create a contingency table between sex and death event
+sex_death_table <- table(Heart_disease$sex, Heart_disease$DEATH_EVENT)
+
+# Print the contingency table
+sex_death_table
+
+# Perform the chi-square test
+chisq.test(sex_death_table)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Create a contingency table between high blood pressure and death event
+high_blood_pressure_death_table <- table(Heart_disease$high_blood_pressure,
+                                         Heart_disease$DEATH_EVENT)
+
+# Print the contingency table
+high_blood_pressure_death_table
+
+# Perform the chi-square test
+chisq.test(high_blood_pressure_death_table)
+```
+
+
+```{r message=FALSE, warning=FALSE}
+# Create a contingency table between diabetes and death event
+diabetes_death_table <- table(Heart_disease$diabetes, Heart_disease$DEATH_EVENT)
+
+# Print the contingency table
+diabetes_death_table
+
+# Perform the chi-square test
+chisq.test(diabetes_death_table)
+```
+
+```{r message=FALSE, warning=FALSE}
+# Create a contingency table between anaemia and death event
+anaemia_death_table <- table(Heart_disease$anaemia, Heart_disease$DEATH_EVENT)
+
+# Print the contingency table
+anaemia_death_table
+
+# Perform the chi-square test
+chisq.test(anaemia_death_table)
+```
+### Analysing the Chi-square results with death event and making conclusion
+
+```{r}
+Predictor_variable = c("anaemia","diabetes","High blood pressure","sex","smoking")
+xsquared = c('0.0073315','0','1.5435','2.1617e-30','1.0422')
+pvalue = c('0.9318','1','0.2141','1','0.3073')
+
+Chi_square_df = data.frame(Predictor_variable,xsquared,pvalue)
+
+Chi_square_df
+
+```
+The above table shows the results of chi-squared tests performed to test the association between various predictor
+variables (anaemia, diabetes, high blood pressure, sex, smoking) and the death event in the heart disease dataset.
+
+The x-squared value indicates the degree of association between the predictor variable and the outcome variable (death
+event). A higher value of x-squared indicates a stronger association between the predictor variable and the outcome
+variable.
+
+Based on the above table, we can conclude that the smoking and diabetes are weakly associated with the death event, as indicated by their relatively low x-squared values and high p-values.
+
+### Performing multiple linear regression on time(follow-up days)
+
+To predict the effect of age, ejection fraction, serum creatinine level, and other clinical features on the patient's follow-up period or time to death:
+
+```{r message=FALSE, warning=FALSE}
+# Fit the multiple linear regression model
+model <- lm(time ~ age + ejection_fraction + serum_creatinine + anaemia + diabetes +
+              high_blood_pressure + sex + smoking +
+            +platelets + creatinine_phosphokinase, data = Heart_disease)
+
+# Print the summary of the model
+summary(model)
+
+```
+
+
+We can observe from the above summary that age, serum creatinine, anaemia, high blood pressure are statistically
+significant predictors of the dependent variable. This suggests that older patients, patients with higher serum creatinine
+levels, anaemic patients, and patients with high blood pressure are more likely to have shorter follow-up periods or higher
+risk of death. But the adjusted R-squared value is only 0.08615 suggests that the model explains only 8.6% of the variance 
+in the dependent variable. The low adjusted R-squared value suggests that the model may not be a good fit for the data and 
+may not provide accurate predictions. 
+
